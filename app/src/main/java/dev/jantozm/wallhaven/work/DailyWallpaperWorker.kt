@@ -8,6 +8,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import dev.jantozm.wallhaven.Prefs
 import dev.jantozm.wallhaven.data.WallpaperRepository
 import java.text.DateFormat
@@ -21,8 +22,9 @@ class DailyWallpaperWorker(
 
     override suspend fun doWork(): Result {
         val prefs = Prefs(applicationContext)
+        val imageUrl = inputData.getString(KEY_IMAGE_URL)
         return try {
-            applyWallpaper(prefs)
+            applyWallpaper(prefs, imageUrl)
             prefs.lastAppliedAt = System.currentTimeMillis()
             prefs.lastStatus = "Updated " + DateFormat.getDateTimeInstance().format(Date())
             Result.success()
@@ -32,8 +34,13 @@ class DailyWallpaperWorker(
         }
     }
 
-    private fun applyWallpaper(prefs: Prefs) {
-        val file = WallpaperRepository(applicationContext).fetchRandomWallpaperFile(prefs.searchQuery)
+    private fun applyWallpaper(prefs: Prefs, imageUrl: String?) {
+        val repository = WallpaperRepository(applicationContext)
+        val file = if (imageUrl != null) {
+            repository.downloadWallpaper(imageUrl)
+        } else {
+            repository.fetchRandomWallpaperFile(prefs.searchQuery)
+        }
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, options)
         val wallpaperManager = WallpaperManager.getInstance(applicationContext)
@@ -68,14 +75,18 @@ class DailyWallpaperWorker(
     }
 
     companion object {
+        private const val KEY_IMAGE_URL = "image_url"
         private const val MAX_RETRIES = 3
 
-        fun enqueueOneTime(context: Context) {
-            val request = OneTimeWorkRequestBuilder<DailyWallpaperWorker>().build()
+        fun enqueueOneTime(context: Context, imageUrl: String? = null) {
+            val builder = OneTimeWorkRequestBuilder<DailyWallpaperWorker>()
+            if (imageUrl != null) {
+                builder.setInputData(workDataOf(KEY_IMAGE_URL to imageUrl))
+            }
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "manual-wallpaper-update",
                 ExistingWorkPolicy.REPLACE,
-                request
+                builder.build()
             )
         }
     }

@@ -11,20 +11,44 @@ class WallpaperRepository(context: Context) {
     private val appContext = context.applicationContext
     private val api = WallhavenApi()
 
-    fun fetchRandomWallpaperFile(query: String): File {
+    fun search(
+        query: String,
+        categories: Set<String>,
+        sorting: String,
+        page: Int
+    ): WallhavenApi.SearchResult {
         val metrics = screenMetrics()
-        val results = api.searchRandomSfw(
+        return api.search(
             query = query,
+            categories = categories,
+            sorting = sorting,
+            page = page,
             minWidth = metrics.widthPixels.coerceAtLeast(1280) / 2,
             minHeight = metrics.heightPixels.coerceAtLeast(720) / 2
         )
-        if (results.isEmpty()) {
+    }
+
+    fun fetchRandomWallpaperFile(query: String): File {
+        val metrics = screenMetrics()
+        val results = api.search(
+            query = query,
+            categories = emptySet(),
+            sorting = "random",
+            page = 1,
+            minWidth = metrics.widthPixels.coerceAtLeast(1280) / 2,
+            minHeight = metrics.heightPixels.coerceAtLeast(720) / 2
+        )
+        if (results.wallpapers.isEmpty()) {
             throw IllegalStateException("Wallhaven returned no results for this search")
         }
-        val wallpaper = results[Random.nextInt(results.size)]
-        val destination = File(appContext.cacheDir, "daily-wallpaper.jpg")
+        val wallpaper = results.wallpapers[Random.nextInt(results.wallpapers.size)]
+        return downloadWallpaper(wallpaper.path)
+    }
+
+    fun downloadWallpaper(url: String): File {
+        val destination = File(appContext.cacheDir, "wallpaper.jpg")
         if (destination.exists()) destination.delete()
-        return api.download(wallpaper.path, destination)
+        return api.download(url, destination)
     }
 
     private fun screenMetrics(): DisplayMetrics {
